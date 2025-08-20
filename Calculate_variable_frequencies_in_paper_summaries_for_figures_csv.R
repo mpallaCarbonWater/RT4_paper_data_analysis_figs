@@ -4,10 +4,10 @@
 # Script Description: 1. Reads the CSV file created from the file paper_summaries.xlsx, named paper_summaries_for_figures.csv
 #                     2. Cleans the data for processing
 #                     3. Calculates frequencies for each variable (which variables are reported most often?), and checks 
-#                        which variables co-occur in the same row (i.e.,are most often teported in one study)
+#                        which variables co-occur in the same row (i.e.,are most often reported in one study)
 #
-# Author:   Marleen Pallandt, #add you name here
-# Email:    marleen.pallandt@natgeo.su.se
+# Authors:   Marleen Pallandt, #add you name here
+# Contact:   marleen.pallandt@natgeo.su.se
 #
 # Date created:     2025-08-20
 #
@@ -178,7 +178,25 @@ ggsave("Variable_frequencies_barplot.png",
 
 # ---- 15. Which variables are reported together in one study most often?
 
-# 1. Get total non-NA counts per variable (same as before)
+# 1. Subset numeric columns 25-52
+vars <- data_raw[, 25:52]
+
+# 2. Create logical matrix: TRUE if non-NA
+vars_logical <- !is.na(vars)
+
+# 3. Compute co-occurrence matrix
+co_occurrence <- t(vars_logical) %*% as.matrix(vars_logical)
+
+# 4. Keep only upper triangle (remove duplicates & self-pairs)
+co_occurrence[lower.tri(co_occurrence, diag = TRUE)] <- NA
+
+# 5. Convert to tidy dataframe
+co_occurrence_df <- as.data.frame(as.table(co_occurrence)) %>%
+  filter(!is.na(Freq) & Freq > 0) %>%
+  arrange(desc(Freq)) %>%
+  rename(Var1 = Var1, Var2 = Var2, Count = Freq)
+
+# 6. Get total non-NA counts per variable to define ordering
 var_order <- data_raw %>%
   select(25:52) %>%
   summarise(across(everything(), ~ sum(!is.na(.)))) %>%
@@ -186,34 +204,34 @@ var_order <- data_raw %>%
   arrange(desc(n_values)) %>%
   pull(Variable)
 
-# 2. Convert Var1 and Var2 to factors with same ordering
+# 7. Convert Var1 and Var2 to factors with same ordering
 co_occurrence_df <- co_occurrence_df %>%
   mutate(
     Var1 = factor(Var1, levels = var_order),
     Var2 = factor(Var2, levels = var_order)
   )
 
-# 3. Plot as heatmap with viridis color scale
+# ---- 8. Plot heatmap ----
 ggplot(co_occurrence_df, aes(x = Var1, y = Var2, fill = Count)) +
   geom_tile(color = "white") +
-  scale_fill_viridis(option = "viridis", direction = -1) +  # yellow -> blue
+  scale_fill_viridis(option = "viridis", direction = -1) +
   labs(
     title = "Co-occurrence of reported variables",
-    x = "Variable name",
-    y = "Variable name",
+    x = "Variable 1",
+    y = "Variable 2",
     fill = "Count"
   ) +
-  theme_bw(base_size = 20) +  # increase base font size
+  theme_bw(base_size = 20) +
   theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 18, face = "bold"),  # x-axis labels
-    axis.text.y = element_text(size = 18, face = "bold"),  # y-axis labels
-    axis.title.x = element_text(size = 20, face = "bold"),  # x-axis title
-    axis.title.y = element_text(size = 20, face = "bold"),  # y-axis title
-    plot.title = element_text(size = 24, face = "bold", hjust = 0.5),  # centered title
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 18, face = "bold"),
+    axis.text.y = element_text(size = 18, face = "bold"),
+    axis.title.x = element_text(size = 20, face = "bold"),
+    axis.title.y = element_text(size = 20, face = "bold"),
+    plot.title = element_text(size = 24, face = "bold", hjust = 0.5),
     legend.title = element_text(size = 18, face = "bold"),
     legend.text = element_text(size = 16)
   )
 
-# ---- Save heatmap ----
+# ---- 9. Save heatmap ----
 ggsave("Variable_co-occurence_matrix.png",
        width = 40, height = 40, units = "cm", dpi = 300)
