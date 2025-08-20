@@ -217,8 +217,8 @@ ggplot(co_occurrence_df, aes(x = Var1, y = Var2, fill = Count)) +
   scale_fill_viridis(option = "viridis", direction = -1) +
   labs(
     title = "Co-occurrence of reported variables",
-    x = "Variable 1",
-    y = "Variable 2",
+    x = "Variable name",
+    y = "Variable name",
     fill = "Count"
   ) +
   theme_bw(base_size = 20) +
