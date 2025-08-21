@@ -190,35 +190,46 @@ co_occurrence <- t(vars_logical) %*% as.matrix(vars_logical)
 # 4. Keep only upper triangle (remove duplicates & self-pairs)
 co_occurrence[lower.tri(co_occurrence, diag = TRUE)] <- NA
 
-# 5. Convert to tidy dataframe
+# 5. Convert to tidy dataframe (only pairs with Count > 0)
 co_occurrence_df <- as.data.frame(as.table(co_occurrence)) %>%
   filter(!is.na(Freq) & Freq > 0) %>%
   arrange(desc(Freq)) %>%
   rename(Var1 = Var1, Var2 = Var2, Count = Freq)
 
-# 6. Get total non-NA counts per variable to define ordering
-var_order <- data_raw %>%
-  select(25:52) %>%
-  summarise(across(everything(), ~ sum(!is.na(.)))) %>%
-  pivot_longer(everything(), names_to = "Variable", values_to = "n_values") %>%
-  arrange(desc(n_values)) %>%
-  pull(Variable)
+# ---- Custom variable ordering: Soil first (33–52), then Plant (25–32) ----
+soil_vars  <- names(data_raw)[33:52]
+plant_vars <- names(data_raw)[25:32]
 
-# 7. Convert Var1 and Var2 to factors with same ordering
+var_order <- c(soil_vars, plant_vars)
+
+# 6. Apply ordering to factors (ensure full factor levels are kept)
 co_occurrence_df <- co_occurrence_df %>%
   mutate(
-    Var1 = factor(Var1, levels = var_order),
-    Var2 = factor(Var2, levels = var_order)
+    Var1 = factor(as.character(Var1), levels = var_order),
+    Var2 = factor(as.character(Var2), levels = var_order)
   )
 
-# ---- 8. Plot heatmap ----
+# ---- Compute split positions by variable name (precise placement,, can be adapted to visual needs) ----
+# Vertical line after "Bacteria_M" (i.e. between "Bacteria_M" and the following var)
+x_intercept <- which(var_order == "Bacteria_M") + 0.5
+
+# Horizontal line after "Bacteria_M" (i.e. between "Bacteria_M" and the following var)
+y_intercept <- which(var_order == "Bacteria_M") + 0.5
+
+# ---- 7. Plot heatmap with separator lines between soil and plant variables ----
 ggplot(co_occurrence_df, aes(x = Var1, y = Var2, fill = Count)) +
   geom_tile(color = "white") +
+  # keep unused factor levels visible (so positions match var_order)
+  scale_x_discrete(drop = FALSE) +
+  scale_y_discrete(drop = FALSE) +
   scale_fill_viridis(option = "viridis", direction = -1) +
+  # separator lines at the computed positions
+  geom_vline(xintercept = x_intercept, color = "red", size = 1.2) +
+  geom_hline(yintercept = y_intercept, color = "red", size = 1.2) +
   labs(
     title = "Co-occurrence of reported variables",
-    x = "Variable name",
-    y = "Variable name",
+    x = "Soil --> Plant variables",
+    y = "Plant ---> soil variables",
     fill = "Count"
   ) +
   theme_bw(base_size = 20) +
@@ -232,6 +243,7 @@ ggplot(co_occurrence_df, aes(x = Var1, y = Var2, fill = Count)) +
     legend.text = element_text(size = 16)
   )
 
-# ---- 9. Save heatmap ----
-ggsave("Variable_co-occurence_matrix.png",
+
+# ---- 8. Save heatmap ----
+ggsave("Variable_co-occurence_matrix_by_plant-soil.png",
        width = 40, height = 40, units = "cm", dpi = 300)
