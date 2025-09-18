@@ -15,11 +15,14 @@
 rm(list = ls())  # Remove all objects from the workspace for a clean start
 
 # ---- 1. Load required R packages ----
-library(readr)   # Provides read_csv/read_csv2 for easy CSV import
-library(dplyr)   # tidy R
-library(tidyr)   # tidy R
-library(ggplot2) # for plotting
-library(viridis) # for the plot colors
+library(readr)      # Provides read_csv/read_csv2 for easy CSV import
+library(dplyr)      # tidy R
+library(tidyr)      # tidy R
+library(ggplot2)    # for plotting
+library(viridis)    # for the plot colors
+library(combinat)   # for combn, or use base::combn directly
+library(ggtext)     # for custom colour labels
+library(colorspace) # for custom colour labels
 
 # ---- 2. Define the path to your CSV file ----
 # Replace "YOUR_PATH/paper_summaries_for_figures.csv" with the actual path on your computer or copy the .csv 
@@ -247,3 +250,99 @@ ggplot(co_occurrence_df, aes(x = Var1, y = Var2, fill = Count)) +
 # ---- 8. Save heatmap ----
 ggsave("Variable_co-occurence_matrix_by_plant-soil.png",
        width = 40, height = 40, units = "cm", dpi = 300)
+
+# ---- 16. Find most common pairs of variables reported together (row-level) ----
+
+# Subset variables of interest (numeric columns 25–52)
+vars <- data_raw[, 25:52]
+
+# Logical version: TRUE if variable is reported in a row
+vars_logical <- !is.na(vars)
+
+# Function to extract all variable pairs from one row
+row_pairs <- apply(vars_logical, 1, function(row) {
+  reported <- names(row)[row]  # variables reported in this row
+  if (length(reported) >= 2) {
+    t(combn(reported, 2))  # all unique pairs of different variables
+  } else {
+    NULL
+  }
+})
+
+# Combine all pairs across rows into a single data.frame
+all_pairs <- do.call(rbind, row_pairs)
+
+# Convert to tibble and count frequencies
+pairs_df <- as.data.frame(all_pairs) %>%
+  rename(Var1 = V1, Var2 = V2) %>%
+  # Remove any accidental self-pairs
+  filter(Var1 != Var2) %>%
+  # Ensure consistent ordering (alphabetical) so A+B == B+A
+  rowwise() %>%
+  mutate(
+    Var_min = min(c(Var1, Var2)),
+    Var_max = max(c(Var1, Var2))
+  ) %>%
+  ungroup() %>%
+  select(Var1 = Var_min, Var2 = Var_max)
+
+# Count frequencies of pairs across all rows
+pair_counts <- pairs_df %>%
+  count(Var1, Var2, sort = TRUE)
+
+# ---- Top 20 most common variable pairs ----
+print(head(pair_counts, 20))
+
+
+# ---- Optional: visualize as bar plot ----
+
+# Filter pairs with n >= 8
+pair_counts_filtered <- pair_counts %>%
+  filter(n >= 8) %>%
+  arrange(desc(n)) %>%
+  mutate(pair_label = paste(Var1, Var2, sep = " + "),
+         y_pos = row_number())  # y positions for plotting
+
+# Assign high-contrast colors to variables
+vars <- unique(c(pair_counts_filtered$Var1, pair_counts_filtered$Var2))
+var_colors <- setNames(rainbow_hcl(length(vars), c = 80, l = 70), vars)
+
+# Colored y-axis labels
+pair_counts_filtered <- pair_counts_filtered %>%
+  rowwise() %>%
+  mutate(pair_label_colored = paste0(
+    "<span style='color:", var_colors[Var1], "'>", Var1, "</span>",
+    " + ",
+    "<span style='color:", var_colors[Var2], "'>", Var2, "</span>"
+  )) %>%
+  ungroup()
+
+# Decide which bars get a label
+# Only label the first occurrence of each unique count
+pair_counts_filtered <- pair_counts_filtered %>%
+  arrange(desc(n)) %>%
+  group_by(n) %>%
+  mutate(label_to_show = if_else(row_number() == 1, as.character(n), NA_character_)) %>%
+  ungroup()
+
+# Plot with grey bars and selective labels
+ggplot(pair_counts_filtered, aes(x = n, y = reorder(pair_label_colored, n))) +
+  geom_col(fill = "grey80", color = "black") +
+  geom_text(aes(label = label_to_show), hjust = -0.1, size = 5, color = "black") +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(
+    title = "Common pairs of reported variables (n ≥ 8)",
+    x = "Count across studies",
+    y = "Variable pairs"
+  ) +
+  theme_bw(base_size = 18) +
+  theme(
+    axis.text.y = element_markdown(size = 14, face = "bold"), # colored labels
+    axis.text.x = element_text(size = 14, face = "bold"),
+    axis.title = element_text(size = 16, face = "bold"),
+    plot.title = element_text(size = 20, face = "bold", hjust = 0.5)
+  )
+
+# save
+ggsave("Reported_variables_common_pairs.png",
+       width=23, height=13, units = "in", dpi = 300)
