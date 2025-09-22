@@ -27,7 +27,7 @@ library(colorspace) # for custom colour labels
 # ---- 2. Define the path to your CSV file ----
 # Replace "YOUR_PATH/paper_summaries_for_figures.csv" with the actual path on your computer or copy the .csv 
 #   file (check if it's the latest version!) to another directory
-file_path <- "C:/Users/mapa7208/Box/RT4 - Temperature-water interactions/paper_summaries_for_figures.csv"
+file_path <- "C:/Users/mapa7208/Box/RT4 - Temperature-water interactions/paper_summaries_for_figures_v2.csv"
 
 # ---- 3. Read the header from line 5 ----
 # Skip first 4 lines so line 5 becomes the header
@@ -48,50 +48,83 @@ data_raw <- read_csv(
   show_col_types = FALSE
 )
 
-# ---- 5. Apply the correct column names ----
+# ---- 5a. Apply the correct column names ----
 colnames(data_raw) <- column_names
+
+# ---- 5b. Robustly drop entirely-blank columns ---- 
+# EXPLANATION: This extra step was needed because Excel created extra, invisible, blank columns in the .CSV file.
+# These columns have an extra trailing comma at the end of each line. As a result R thinks there’s one more column. 
+# Excel often does this if there are extra empty cells in the sheet.
+is_blank_col <- function(col) {
+  ch <- as.character(col)
+  ch[is.na(ch)] <- ""
+  # Replace known problematic invisible chars with nothing
+  ch <- gsub("\u00A0", "", ch, fixed = TRUE)   # non-breaking space
+  ch <- gsub("\uFEFF", "", ch, fixed = TRUE)   # BOM
+  # Trim normal whitespace
+  ch2 <- trimws(ch)
+  all(ch2 == "")
+}
+
+blank_cols_logical <- vapply(data_raw, is_blank_col, logical(1))
+
+if (any(blank_cols_logical)) {
+  dropped_names <- names(data_raw)[blank_cols_logical]
+  message("Dropping entirely-blank columns: ", paste(dropped_names, collapse = ", "))
+  data_raw <- data_raw[, !blank_cols_logical, drop = FALSE]
+} else {
+  message("No entirely-blank columns detected.")
+}
+
+# Sanity check
+message("Columns after dropping blanks: ", ncol(data_raw)) # n should be 56
+
 
 # ---- 6. Inspect the dataframe ----
 head(data_raw)
 names(data_raw) # see all variable names
 
-# ---- 7. Define clean names for the first 21 columns ----
-new_names_first21 <- c( #selected manually from the csv file and shortened by chatGPT
-  "Matrix_entry_by",          # who added this observation to the matric
-  "Matrix_number",            # matrix number paper format: Dxxx
-  "First_Author",             # paper 1st author
-  "Year",                     # year of publication
-  "Title",                    # paper title
-  "DOI",                      # paper DOI
-  "Journal",                  # journal of publication
-  "Long",                     # Longitude reported in the study (units will be unified in August/Sept!)
-  "Lat",                      # Latitude reported in the study (units will be unified in August/Sept!)
-  "Elevation",			      # as reported in the study
-  "Ecosystem",                # as reported in the study
-  "Dominant_plant_type",      # as reported in the study
-  "Variable",                 # Variable manipulated in experiment (should be precipitation for all studies)
-  "MAP_mm_yr",                # Mean annual precipitation reported in the study
-  "MAT_C",                    # Mean annual temperature reported in the study
-  "Precip_change_direction",  # Direction and relative change of precipitation compared to control
-  "Precip_percent_control",   # Precipitation as % of control
-  "All_year",                 # Results reported for this time period (from "Time" in csv file)
-  "Growing_season",           # Results reported for this time period (from "Time" in csv file)
-  "Seasonal",                 # Results reported for this time period (from "Time" in csv file)
-  "By_months"                 # Results reported for this time period (from "Time" in csv file)
+# ---- 7. Define clean names for the first 25 columns ----
+new_names_first25 <- c( #selected manually from the csv file and shortened by chatGPT
+  "Matrix_entry_by",             # who added this observation to the matrix
+  "Response_reported",           # Boolean: Yes/No
+  "Keep_entry",                  # Yes/No/Maybe (for now only select yes)
+  "Matrix_number",               # matrix number paper format: Dxxx
+  "First_Author",                # paper 1st author
+  "Year",                        # year of publication
+  "Title",                       # paper title
+  "DOI",                         # paper DOI
+  "Journal",                     # journal of publication
+  "Long",                        # Longitude reported in the study (units will be unified in August/Sept!)
+  "Lat",                         # Latitude reported in the study (units will be unified in August/Sept!)
+  "Elevation",			             # Elevation as reported in the study
+  "Ecosystem",                   # Ecosytem as reported in the study
+  "Dominant_plant_type",         # Dominat plant type as reported in the study
+  "Variable",                    # Variable manipulated in experiment (should be precipitation for all studies)
+  "MAP_mm_yr",                   # Mean annual precipitation reported in the study
+  "MAT_C",                       # Mean annual temperature reported in the study
+  "Precip_change_dir",           # Direction and relative change of precipitation compared to control
+  "Precip_perc_control",         # Precipitation as % of control
+  "Annual_precip_change_dir",    # Direction and relative change of precipitation compared to control PER YEAR
+  "Annual_Precip_perc_control",  # Precipitation as % of control PER YEAR
+  "All_year",                    # Results reported for this time period (from "Time" in csv file)
+  "Growing_season",              # Results reported for this time period (from "Time" in csv file)
+  "Seasonal",                    # Results reported for this time period (from "Time" in csv file)
+  "By_months"                    # Results reported for this time period (from "Time" in csv file)
 )
 
 # ---- 8. Apply new names to dataframe ----
-colnames(data_raw)[1:21] <- new_names_first21
+colnames(data_raw)[1:25] <- new_names_first25
 
 # ---- 9. Inspect updated names ----
 colnames(data_raw)[1:30]   # check the first 30 names to verify
 
-# ---- 10. Define new names for columns 22–52 ----
-new_names_22_52 <- c(
+# ---- 10. Define new names for columns 26–57 ----
+new_names_26_56 <- c(
   "Overall_time_years",  # Experiment duration
   "Reported_time",       # Time period for which results are reported in the study
   "Replicates_ok",       # Is the number of replicate sound?
-  # variables of interest start here at column 25:
+  # variables of interest start here at column 29:
   "Plant_AB",            # Plant aboveground biomass
   "Plant_BB",            # Plant belowground biomass
   "Plant_ANPP",          # Plant aboveground Net Primary Productivity
@@ -123,13 +156,13 @@ new_names_22_52 <- c(
 )
 
 # ---- 11. Apply names to dataframe ----
-colnames(data_raw)[22:52] <- new_names_22_52
+colnames(data_raw)[26:56] <- new_names_26_56
 
 # ---- 12. Inspect final result ----
 colnames(data_raw)
 
-# ---- 13. Check for different NA notations in columns 25-52 ----
-non_numeric_values <- lapply(data_raw[25:52], function(x) {
+# ---- 13. Check for different NA notations in columns 29-56 ----
+non_numeric_values <- lapply(data_raw[29:56], function(x) {
   vals <- unique(x)        # unique values
   vals[!grepl("^-?[0-9.]+$", vals) & !is.na(vals)]  # keep only non-numeric
 })
@@ -141,7 +174,7 @@ print(non_numeric_values)
 
 # ---- 13. For now, directly convert non-numeric characters to NA ----
 data_raw <- data_raw %>%
-  mutate(across(25:52, as.numeric)) # gives warnings that some variables were coerced to NA (expected)
+  mutate(across(29:56, as.numeric)) # gives warnings that some variables were coerced to NA (expected)
 
 # ------------- PART 2 -------------
 
@@ -149,7 +182,7 @@ data_raw <- data_raw %>%
 
 # ---- Count non-NA values per variable ----
 non_na_counts <- data_raw %>%
-  select(25:52) %>%
+  select(29:56) %>%
   summarise(across(everything(), ~ sum(!is.na(.)))) %>%
   pivot_longer(everything(), names_to = "Variable", values_to = "n_values") %>%
   mutate(label = paste0(n_values, "/", nrow(data_raw))) %>%
@@ -176,13 +209,13 @@ ggplot(non_na_counts, aes(x = n_values, y = Variable)) +
   )
 
 # ---- Save plot ----
-ggsave("Variable_frequencies_barplot.png",
+ggsave("Variable_frequencies_barplot_v2.png",
        width = 40, height = 40, units = "cm", dpi = 300)
 
 # ---- 15. Which variables are reported together in one study most often?
 
 # 1. Subset numeric columns 25-52
-vars <- data_raw[, 25:52]
+vars <- data_raw[, 29:56]
 
 # 2. Create logical matrix: TRUE if non-NA
 vars_logical <- !is.na(vars)
@@ -200,8 +233,8 @@ co_occurrence_df <- as.data.frame(as.table(co_occurrence)) %>%
   rename(Var1 = Var1, Var2 = Var2, Count = Freq)
 
 # ---- Custom variable ordering: Soil first (33–52), then Plant (25–32) ----
-soil_vars  <- names(data_raw)[33:52]
-plant_vars <- names(data_raw)[25:32]
+soil_vars  <- names(data_raw)[37:56]
+plant_vars <- names(data_raw)[29:36]
 
 var_order <- c(soil_vars, plant_vars)
 
@@ -248,13 +281,13 @@ ggplot(co_occurrence_df, aes(x = Var1, y = Var2, fill = Count)) +
 
 
 # ---- 8. Save heatmap ----
-ggsave("Variable_co-occurence_matrix_by_plant-soil.png",
+ggsave("Variable_co-occurence_matrix_by_plant-soil_v2.png",
        width = 40, height = 40, units = "cm", dpi = 300)
 
 # ---- 16. Find most common pairs of variables reported together (row-level) ----
 
 # Subset variables of interest (numeric columns 25–52)
-vars <- data_raw[, 25:52]
+vars <- data_raw[, 29:56]
 
 # Logical version: TRUE if variable is reported in a row
 vars_logical <- !is.na(vars)
@@ -344,5 +377,5 @@ ggplot(pair_counts_filtered, aes(x = n, y = reorder(pair_label_colored, n))) +
   )
 
 # save
-ggsave("Reported_variables_common_pairs.png",
+ggsave("Reported_variables_common_pairs_v2.png",
        width=23, height=13, units = "in", dpi = 300)
