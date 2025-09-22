@@ -29,140 +29,73 @@ library(colorspace) # for custom colour labels
 #   file (check if it's the latest version!) to another directory
 file_path <- "C:/Users/mapa7208/Box/RT4 - Temperature-water interactions/paper_summaries_for_figures_v2.csv"
 
-# ---- 3. Read the header from line 5 ----
-# Skip first 4 lines so line 5 becomes the header
-header_df <- read_csv(
-  file = file_path,
-  skip = 4,           # skips 1–4
-  n_max = 1,          # read just one row (header)
-  show_col_types = FALSE
-)
-column_names <- names(header_df)
-
-# ---- 4. Read the actual data starting on line 7 ----
-# Skip 6 lines (1–6), so line 7 is the first data row
+# ---- 3. Read the header from line 6 ----
+# Skip first 5 lines so line 6 becomes the header
 data_raw <- read_csv(
   file = file_path,
-  skip = 6,           # skips 1–6
-  col_names = FALSE,  # we'll apply header manually
+  skip = 5,           # skip first 5 lines, so row 6 is used as header
   show_col_types = FALSE
 )
 
-# ---- 5a. Apply the correct column names ----
-colnames(data_raw) <- column_names
+# check result
+colnames(data_raw)
 
-# ---- 5b. Robustly drop entirely-blank columns ---- 
-# EXPLANATION: This extra step was needed because Excel created extra, invisible, blank columns in the .CSV file.
-# These columns have an extra trailing comma at the end of each line. As a result R thinks there’s one more column. 
-# Excel often does this if there are extra empty cells in the sheet.
+# ---- 4. Robustly drop entirely-blank columns ---- 
+# EXPLANATION: Excel sometimes writes "phantom" columns into CSV files. 
+# This happens when the spreadsheet has extra empty cells far to the right.
+# In the CSV, these show up as trailing commas at the end of each row, 
+# which R interprets as extra empty columns.
+
+# --- Helper function: checks if a whole column is blank ---
 is_blank_col <- function(col) {
-  ch <- as.character(col)
-  ch[is.na(ch)] <- ""
+  ch <- as.character(col) # Convert to character (handles numeric/other types uniformly)
+  ch[is.na(ch)] <- "" # Treat NA as empty string
+  
   # Replace known problematic invisible chars with nothing
-  ch <- gsub("\u00A0", "", ch, fixed = TRUE)   # non-breaking space
-  ch <- gsub("\uFEFF", "", ch, fixed = TRUE)   # BOM
-  # Trim normal whitespace
-  ch2 <- trimws(ch)
-  all(ch2 == "")
+  ch <- gsub("\u00A0", "", ch, fixed = TRUE)   # non-breaking space (common when copy-pasting in Excel)
+  ch <- gsub("\uFEFF", "", ch, fixed = TRUE)   # byte-order mark (BOM) sometimes sneaks in at file start
+  
+  ch2 <- trimws(ch) # Remove of whitespace (spaces, tabs, etc.)
+  all(ch2 == "")    # Column is "blank" if every entry is empty after cleaning
 }
 
+# --- Apply helper function to all columns in data.frame data_raw ---
 blank_cols_logical <- vapply(data_raw, is_blank_col, logical(1))
 
+# --- Drop blank columns if found ---
 if (any(blank_cols_logical)) {
   dropped_names <- names(data_raw)[blank_cols_logical]
   message("Dropping entirely-blank columns: ", paste(dropped_names, collapse = ", "))
+  
+  # Keep only non-blank columns
   data_raw <- data_raw[, !blank_cols_logical, drop = FALSE]
 } else {
   message("No entirely-blank columns detected.")
 }
 
 # Sanity check
-message("Columns after dropping blanks: ", ncol(data_raw)) # n should be 56
+message("Columns after dropping blanks: ", ncol(data_raw)) # n should now be 56 columns
 
-
-# ---- 6. Inspect the dataframe ----
+# Inspect the dataframe ----
 head(data_raw)
 names(data_raw) # see all variable names
 
-# ---- 7. Define clean names for the first 25 columns ----
-new_names_first25 <- c( #selected manually from the csv file and shortened by chatGPT
-  "Matrix_entry_by",             # who added this observation to the matrix
-  "Response_reported",           # Boolean: Yes/No
-  "Keep_entry",                  # Yes/No/Maybe (for now only select yes)
-  "Matrix_number",               # matrix number paper format: Dxxx
-  "First_Author",                # paper 1st author
-  "Year",                        # year of publication
-  "Title",                       # paper title
-  "DOI",                         # paper DOI
-  "Journal",                     # journal of publication
-  "Long",                        # Longitude reported in the study (units will be unified in August/Sept!)
-  "Lat",                         # Latitude reported in the study (units will be unified in August/Sept!)
-  "Elevation",			             # Elevation as reported in the study
-  "Ecosystem",                   # Ecosytem as reported in the study
-  "Dominant_plant_type",         # Dominat plant type as reported in the study
-  "Variable",                    # Variable manipulated in experiment (should be precipitation for all studies)
-  "MAP_mm_yr",                   # Mean annual precipitation reported in the study
-  "MAT_C",                       # Mean annual temperature reported in the study
-  "Precip_change_dir",           # Direction and relative change of precipitation compared to control
-  "Precip_perc_control",         # Precipitation as % of control
-  "Annual_precip_change_dir",    # Direction and relative change of precipitation compared to control PER YEAR
-  "Annual_Precip_perc_control",  # Precipitation as % of control PER YEAR
-  "All_year",                    # Results reported for this time period (from "Time" in csv file)
-  "Growing_season",              # Results reported for this time period (from "Time" in csv file)
-  "Seasonal",                    # Results reported for this time period (from "Time" in csv file)
-  "By_months"                    # Results reported for this time period (from "Time" in csv file)
-)
+# ---- 5. Filter studies that were marked as suitable ----
+# The column 'Keep_entry' marks which studies we can select for our analysis
+# Code searches for variations like "Yes", "yes", "Y", "yep", etc.
+# Instead of manually listing all of them, we use a pattern search (regex).
+# Other entries (e.g. "No", "Maybe", "n", blanks) will be dropped.
 
-# ---- 8. Apply new names to dataframe ----
-colnames(data_raw)[1:25] <- new_names_first25
+# Inspect what unique entries exist in Keep_entry
+message("Unique values in Keep_entry: ", paste(unique(data_raw$Keep_entry), collapse = ", "))
 
-# ---- 9. Inspect updated names ----
-colnames(data_raw)[1:30]   # check the first 30 names to verify
+data_clean <- data_raw %>%
+  filter(Keep_entry=="Yes") # keep anything starting with "y" or "Y" (40 observations dropped)
 
-# ---- 10. Define new names for columns 26–57 ----
-new_names_26_56 <- c(
-  "Overall_time_years",  # Experiment duration
-  "Reported_time",       # Time period for which results are reported in the study
-  "Replicates_ok",       # Is the number of replicate sound?
-  # variables of interest start here at column 29:
-  "Plant_AB",            # Plant aboveground biomass
-  "Plant_BB",            # Plant belowground biomass
-  "Plant_ANPP",          # Plant aboveground Net Primary Productivity
-  "Plant_BNPP",          # Plant belowgroundNet Primary Productivity
-  "Plant_N",             # Plant N content
-  "Plant_P",             # Plant P content
-  "Plant_CNratio",       # Plant C:N ratio
-  "Plant_CPratio",       # Plant C:P ratio
-  "Rs",                  # Soil respiration (Ra + Rh)
-  "Ra",                  # Autotrophic respiration (tree roots)
-  "Rh",                  # Heterotrophic respiration (microbes)
-  "Litter_Forestfloor",  # Total litter on forest floor
-  "Soil_TC",             # Soil total carbon
-  "Soil_TN",             # Soil total nitrogen
-  "Soil_TP",             # Soil total phosphorus
-  "Soil_TCNratio",       # Soil total C:N ratio
-  "Soil_TCPratio",       # Soil total C:P ratio
-  "Soil_DOC",            # Soil dissolved organic carbon
-  "Soil_InorgN",         # Soil total inorganic nitrogen
-  "Soil_AvP",            # Soil available phosphorus
-  "Mic_C",               # microbial carbon
-  "Mic_N",               # microbial nitrogen
-  "Mic_P",               # microbial phosphorus
-  "Mic_CNratio",         # microbial C:N ratio
-  "Mic_CPratio",         # microbial C:P ratio
-  "FBratio",             # fungal:bacteria ratio
-  "Fungi_M",             # fungal biomass
-  "Bacteria_M"           # microbial biomass
-)
+# ---- 6. Check for different NA notations in columns 29-56 ----
+# Variables of interest are located in column 29 - 56. Let's see if the notation makes sense
 
-# ---- 11. Apply names to dataframe ----
-colnames(data_raw)[26:56] <- new_names_26_56
-
-# ---- 12. Inspect final result ----
-colnames(data_raw)
-
-# ---- 13. Check for different NA notations in columns 29-56 ----
-non_numeric_values <- lapply(data_raw[29:56], function(x) {
+non_numeric_values <- lapply(data_clean[29:56], function(x) {
   vals <- unique(x)        # unique values
   vals[!grepl("^-?[0-9.]+$", vals) & !is.na(vals)]  # keep only non-numeric
 })
@@ -170,22 +103,22 @@ non_numeric_values <- lapply(data_raw[29:56], function(x) {
 # Print results (only show columns that had non-numeric values)
 non_numeric_values <- non_numeric_values[sapply(non_numeric_values, length) > 0]
 print(non_numeric_values)
-# WARNING! this shows that some columns have notes or an 'X' notation. Let's decide later how to handle these!
+# WARNING! this shows that some columns have notes or an 'X' notation, or different NA notations (maybe use grepl to filter these out)
 
-# ---- 13. For now, directly convert non-numeric characters to NA ----
-data_raw <- data_raw %>%
+# ---- 7. For now, directly convert non-numeric characters to NA ----
+data_clean <- data_clean %>%
   mutate(across(29:56, as.numeric)) # gives warnings that some variables were coerced to NA (expected)
 
 # ------------- PART 2 -------------
 
-# ---- 14. quickly calculate frequencies. Which variables are reported most often?
+# ---- 8. quickly calculate frequencies. Which variables are reported most often?
 
 # ---- Count non-NA values per variable ----
-non_na_counts <- data_raw %>%
+non_na_counts <- data_clean %>%
   select(29:56) %>%
   summarise(across(everything(), ~ sum(!is.na(.)))) %>%
   pivot_longer(everything(), names_to = "Variable", values_to = "n_values") %>%
-  mutate(label = paste0(n_values, "/", nrow(data_raw))) %>%
+  mutate(label = paste0(n_values, "/", nrow(data_clean))) %>%
   arrange(desc(n_values)) %>%
   mutate(Variable = factor(Variable, levels = rev(Variable)))  # reverse to get top-to-bottom
 
@@ -212,10 +145,10 @@ ggplot(non_na_counts, aes(x = n_values, y = Variable)) +
 ggsave("Variable_frequencies_barplot_v2.png",
        width = 40, height = 40, units = "cm", dpi = 300)
 
-# ---- 15. Which variables are reported together in one study most often?
+# ---- 8. Which variables are reported together in one study most often?
 
-# 1. Subset numeric columns 25-52
-vars <- data_raw[, 29:56]
+# 1. Subset numeric columns 29-56
+vars <- data_clean[, 29:56]
 
 # 2. Create logical matrix: TRUE if non-NA
 vars_logical <- !is.na(vars)
@@ -233,8 +166,8 @@ co_occurrence_df <- as.data.frame(as.table(co_occurrence)) %>%
   rename(Var1 = Var1, Var2 = Var2, Count = Freq)
 
 # ---- Custom variable ordering: Soil first (33–52), then Plant (25–32) ----
-soil_vars  <- names(data_raw)[37:56]
-plant_vars <- names(data_raw)[29:36]
+soil_vars  <- names(data_clean)[37:56]
+plant_vars <- names(data_clean)[29:36]
 
 var_order <- c(soil_vars, plant_vars)
 
@@ -284,10 +217,10 @@ ggplot(co_occurrence_df, aes(x = Var1, y = Var2, fill = Count)) +
 ggsave("Variable_co-occurence_matrix_by_plant-soil_v2.png",
        width = 40, height = 40, units = "cm", dpi = 300)
 
-# ---- 16. Find most common pairs of variables reported together (row-level) ----
+# ---- 9. Find most common pairs of variables reported together (row-level) ----
 
 # Subset variables of interest (numeric columns 25–52)
-vars <- data_raw[, 29:56]
+vars <- data_clean[, 29:56]
 
 # Logical version: TRUE if variable is reported in a row
 vars_logical <- !is.na(vars)
