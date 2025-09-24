@@ -20,9 +20,9 @@ library(dplyr)      # tidy R
 library(tidyr)      # tidy R
 library(ggplot2)    # for plotting
 library(viridis)    # for the plot colors
-library(combinat)   # for combn, or use base::combn directly
 library(ggtext)     # for custom colour labels
 library(colorspace) # for custom colour labels
+library(patchwork)  # arranging multiple ggplots in a grid (to save as pdf)
 
 # ---- 2. Define the path to your CSV file ----
 # Replace "YOUR_PATH/paper_summaries_for_figures.csv" with the actual path on your computer or copy the .csv 
@@ -145,7 +145,7 @@ ggplot(non_na_counts, aes(x = n_values, y = Variable)) +
 ggsave("Variable_frequencies_barplot_v2.png",
        width = 40, height = 40, units = "cm", dpi = 300)
 
-# ---- 8. Which variables are reported together in one study most often?
+# ---- 9. Which variables are reported together in one study most often?
 
 # 1. Subset numeric columns 29-56
 vars <- data_clean[, 29:56]
@@ -217,9 +217,9 @@ ggplot(co_occurrence_df, aes(x = Var1, y = Var2, fill = Count)) +
 ggsave("Variable_co-occurence_matrix_by_plant-soil_v2.png",
        width = 40, height = 40, units = "cm", dpi = 300)
 
-# ---- 9. Find most common pairs of variables reported together (row-level) ----
+# ---- 10. Find most common pairs of variables reported together (row-level) ----
 
-# Subset variables of interest (numeric columns 25–52)
+# Subset variables of interest (numeric columns 29–56)
 vars <- data_clean[, 29:56]
 
 # Logical version: TRUE if variable is reported in a row
@@ -312,3 +312,122 @@ ggplot(pair_counts_filtered, aes(x = n, y = reorder(pair_label_colored, n))) +
 # save
 ggsave("Reported_variables_common_pairs_v2.png",
        width=23, height=13, units = "in", dpi = 300)
+
+# ---- 11. Create crosshair plots with precipitation treatment effects on variables
+
+# --- (1) Lookup table for descriptive plot axes labels ---
+var_labels <- c(
+  "Plant_AB" = "Plant abovegr. biomass",
+  "Plant_BB" = "Plant belowgr. biomass",
+  "Plant_ANPP" = "Plant abovegr. NPP",
+  "Plant_BNPP" = "Plant belowgr. NPP",
+  "Plant_N" = "Plant N content",
+  "Plant_P" = "Plant P content",
+  "Plant_CNratio" = "Plant C:N ratio",
+  "Plant_CPratio" = "Plant C:P ratio",
+  "Rs" = "Soil respiration (Rs)",
+  "Ra" = "Autotrophic respiration (Ra)",
+  "Rh" = "Heterotrophic respiration (Rh)",
+  "Litter_Forestfloor" = "Forest floor litter",
+  "Soil_TC" = "Soil total C",
+  "Soil_TN" = "Soil total N",
+  "Soil_TP" = "Soil total P",
+  "Soil_TCNratio" = "Soil C:N ratio",
+  "Soil_TCPratio" = "Soil C:P ratio",
+  "Soil_DOC" = "Soil DOC",
+  "Soil_InorgN" = "Soil inorganic N",
+  "Soil_AvP" = "Soil available P",
+  "Mic_C" = "Microbial C",
+  "Mic_N" = "Microbial N",
+  "Mic_P" = "Microbial P",
+  "Mic_CNratio" = "Microbial C:N ratio",
+  "Mic_CPratio" = "Microbial C:P ratio",
+  "FBratio" = "Fungi:bacteria ratio",
+  "Fungi_M" = "Fungal biomass",
+  "Bacteria_M" = "Bacterial biomass"
+)
+
+# --- (2) Discretize precipitation treatments into -, 0, + ---
+data_clean <- data_clean %>%
+  mutate(
+    Precip_class = case_when(
+      Precip_change_dir < 0 ~ "-",
+      Precip_change_dir == 0 ~ "0",
+      Precip_change_dir > 0 ~ "+"
+    )
+  )
+
+# --- (3) Choose variables from the top-10 reported variable pairs (pair_counts) ---
+top10_pairs <- pair_counts %>% slice_max(n, n = 10)
+top10_vars  <- unique(c(top10_pairs$Var1, top10_pairs$Var2)) # remove doubles
+
+# --- (4) reshape data to long format 
+effects_long <- data_clean %>%
+  select(Precip_class, all_of(top10_vars)) %>%
+  pivot_longer(-Precip_class, names_to = "Variable", values_to = "Effect") %>%
+  filter(!is.na(Effect))
+
+# filter to significant positive/negative effects of precipitation on a variable
+# Keep only rows where precipitation changed and the effect was not zero
+plot_data <- effects_long %>%
+  filter(Precip_class != "0", Effect != 0) %>%
+  group_by(Variable, Precip_class, Effect) %>%
+  summarise(Freq = n(), .groups = "drop") %>%
+  mutate(
+    x = ifelse(Precip_class == "-", -1, 1),  # position for x-axis, left = -, right = +
+    y = Effect                               # position for y-axis, -1 bottom, +1 top
+  )
+
+# ensure consistent sizing of frequency circles across plots
+maxFreq <- if (nrow(plot_data) > 0) max(plot_data$Freq, na.rm = TRUE) else 1
+
+# --- (5) build the plots (in order of top10_vars) ---
+plots <- list()
+for (v in top10_vars) {
+  df_var <- plot_data %>% filter(Variable == v)
+  
+  if (nrow(df_var) == 0) {
+    # create an empty crosshair plot if no +/- data is available for this variable
+    p <- ggplot() +
+      geom_hline(yintercept = 0, colour = "grey50") +
+      geom_vline(xintercept = 0, colour = "grey50") +
+      scale_x_continuous(breaks = c(-1, 1), labels = c("-", "+"), limits = c(-1.5, 1.5), expand = expansion(mult = 0.05)) +
+      scale_y_continuous(breaks = c(-1, 1), labels = c("-", "+"), limits = c(-1.5, 1.5), expand = expansion(mult = 0.05)) +
+      labs(x = "Precipitation", y = var_labels[v]) +
+      annotate("text", x = 0, y = 0, label = "no +/- data", size = 5, colour = "black") +
+      theme_minimal() +
+      theme(panel.grid = element_blank(), legend.position = "none", axis.text = element_text(size = 16), axis.title = element_text(size = 14))
+  } else {
+    # ensure all 4 quadrant positions are drawn even if empty
+    df_var <- df_var %>%
+      complete(x = c(-1, 1), y = c(-1, 1), fill = list(Freq = 0))
+    
+    # create crosshair plot (p)
+    p <- ggplot(df_var, aes(x = x, y = y)) +
+      geom_hline(yintercept = 0, colour = "grey50") +
+      geom_vline(xintercept = 0, colour = "grey50") +
+      geom_point(aes(size = Freq), shape = 21, fill = "black", colour = "black", alpha = 0.95) +
+      geom_text(aes(label = ifelse(Freq > 0, Freq, "")), colour = "white", size = 4) +
+      scale_size_continuous(range = c(6, 20), limits = c(0, maxFreq)) + # keep circle sizes consistent across plots
+      scale_x_continuous(breaks = c(-1, 1), labels = c("-", "+"), limits = c(-1.5, 1.5), expand = expansion(mult = 0.05)) +
+      scale_y_continuous(breaks = c(-1, 1), labels = c("-", "+"), limits = c(-1.5, 1.5), expand = expansion(mult = 0.05)) +
+      coord_fixed() +
+      labs(x = "Precipitation", y = var_labels[v]) +
+      theme_minimal(base_size = 14) +
+      theme(panel.grid = element_blank(), legend.position = "none", axis.text = element_text(size = 16), axis.title = element_text(size = 14))
+  }
+  
+  plots[[v]] <- p
+}
+
+# --- (6) Save all plots to a multi-page PDF, 6 plots per page (3 rows x 2 cols) ---
+out_pdf <- "top10_variable_response_plots.pdf"
+chunks <- split(plots, ceiling(seq_along(plots) / 6))
+
+pdf(out_pdf, width = 8.5, height = 11)
+for (ch in chunks) {
+  # print a 3x2 grid of the chunk
+  pw <- do.call(wrap_plots, c(ch, ncol = 2, nrow = 3))
+  print(pw)
+}
+dev.off()
