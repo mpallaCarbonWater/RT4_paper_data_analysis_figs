@@ -406,7 +406,8 @@ for (v in top10_vars) {
     p <- ggplot(df_var, aes(x = x, y = y)) +
       geom_hline(yintercept = 0, colour = "grey50") +
       geom_vline(xintercept = 0, colour = "grey50") +
-      geom_point(aes(size = Freq), shape = 21, fill = "black", colour = "black", alpha = 0.95) +
+      geom_point(data = subset(df_var, Freq > 0), # no circle drawn when frequency = 0 
+        aes(size = Freq), shape = 21, fill = "black", colour = "black", alpha = 0.95) +
       geom_text(aes(label = ifelse(Freq > 0, Freq, "")), colour = "white", size = 4) +
       scale_size_continuous(range = c(6, 20), limits = c(0, maxFreq)) + # keep circle sizes consistent across plots
       scale_x_continuous(breaks = c(-1, 1), labels = c("-", "+"), limits = c(-1.5, 1.5), expand = expansion(mult = 0.05)) +
