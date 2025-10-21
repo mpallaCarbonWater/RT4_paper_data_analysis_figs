@@ -27,7 +27,7 @@ library(patchwork)  # arranging multiple ggplots in a grid (to save as pdf)
 # ---- 2. Define the path to your CSV file ----
 # Replace "YOUR_PATH/paper_summaries_for_figures.csv" with the actual path on your computer or copy the .csv 
 #   file (check if it's the latest version!) to another directory
-file_path <- "C:/Users/mapa7208/Box/RT4 - Temperature-water interactions/paper_summaries_for_figures_v2.csv"
+file_path <- "C:/Users/mapa7208/Box/RT4 - Temperature-water interactions/paper_summaries_for_figures_v3.csv"
 
 # ---- 3. Read the header from line 6 ----
 # Skip first 5 lines so line 6 becomes the header
@@ -142,7 +142,7 @@ ggplot(non_na_counts, aes(x = n_values, y = Variable)) +
   )
 
 # ---- Save plot ----
-ggsave("Variable_frequencies_barplot_v2.png",
+ggsave("Variable_frequencies_barplot_v3.png",
        width = 40, height = 40, units = "cm", dpi = 300)
 
 # ---- 9. Which variables are reported together in one study most often?
@@ -214,7 +214,7 @@ ggplot(co_occurrence_df, aes(x = Var1, y = Var2, fill = Count)) +
 
 
 # ---- 8. Save heatmap ----
-ggsave("Variable_co-occurence_matrix_by_plant-soil_v2.png",
+ggsave("Variable_co-occurence_matrix_by_plant-soil_v3.png",
        width = 40, height = 40, units = "cm", dpi = 300)
 
 # ---- 10. Find most common pairs of variables reported together (row-level) ----
@@ -310,7 +310,7 @@ ggplot(pair_counts_filtered, aes(x = n, y = reorder(pair_label_colored, n))) +
   )
 
 # save
-ggsave("Reported_variables_common_pairs_v2.png",
+ggsave("Reported_variables_common_pairs_v3.png",
        width=23, height=13, units = "in", dpi = 300)
 
 # ---- 11. Create crosshair plots with precipitation treatment effects on variables
@@ -422,7 +422,7 @@ for (v in top10_vars) {
 }
 
 # --- (6) Save all plots to a multi-page PDF, 6 plots per page (3 rows x 2 cols) ---
-out_pdf <- "top10_variable_response_plots.pdf"
+out_pdf <- "top10_variable_response_plots_v2.pdf"
 chunks <- split(plots, ceiling(seq_along(plots) / 6))
 
 pdf(out_pdf, width = 8.5, height = 11)
