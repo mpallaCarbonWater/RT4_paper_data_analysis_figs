@@ -468,72 +468,120 @@ for (ch in chunks) {
 }
 dev.off()
 
+
 # ---- 11. co-occurrance with Precipitation change into "-" and "+" ----
 
 co_occurrence_df_PS_Fig<-setDT(co_occurrence_df_PS)[Count>10]#only the pairs with count larger than 10 
 as.numeric(length(co_occurrence_df_PS_Fig$Var1))#19 pairs with count larger than 10
 
+# for a global N across panels#
+all_data_list <- list()
 p0<-ggplot()
+global_N_range<-NULL
+#Getting the global N for each panel，so that the point size are comparable across panels
 for (i in 1:19)
 {
   vars_fig<-as.character(unlist(co_occurrence_df_PS_Fig[i, 1:2]))
   data<-data_clean[,c(vars_fig,"Precip_class")]
   data<-na.omit(data)
   data_p<-setDT(data)[, .N, by = c(vars_fig, "Precip_class")]
+ global_N<-data.frame(i=i,Precip_class=data_p$Precip_class,N=data_p$N)
+  global_N_range<-rbind(global_N_range,global_N)
+
+}
+global_N_range<-global_N_range[,-1:-2]
+global_N_range <- range(global_N_range)
+
+all_data_list <- list()
+p0<-ggplot()
+
+for (i in 2:19)
+{
+  
+  vars_fig<-as.character(unlist(co_occurrence_df_PS_Fig[i, 1:2]))
+  data<-data_clean[,c(vars_fig,"Precip_class")]
+  data<-na.omit(data)
+  data_p<-setDT(data)[, .N, by = c(vars_fig, "Precip_class")]
   x_var <- names(data_p)[1]
   y_var <- names(data_p)[2]
-  p1<-ggplot(data_p, aes(x = .data[[x_var]], y = .data[[y_var]])) +geom_point(aes(color=Precip_class,size=N))+theme_classic()+geom_hline(yintercept = 0, colour = "grey50") +
-  geom_vline(xintercept = 0, colour = "grey50") +
+  p1<-ggplot(data_p, aes(x = .data[[x_var]], y = .data[[y_var]])) +geom_point(aes(color=Precip_class,size=N))+scale_size_continuous(limits = global_N_range)+theme_classic()+geom_hline(yintercept = 0, colour = "grey50") +
+  geom_vline(xintercept = 0, colour = "grey50") +theme(legend.position = "none")+
   scale_x_continuous(breaks = c(-1, 1), labels = c("-", "+"), limits = c(-1.5, 1.5), expand = expansion(mult = 0.05)) +
-  scale_y_continuous(breaks = c(-1, 1), labels = c("-", "+"), limits = c(-1.5, 1.5), expand = expansion(mult = 0.05)) 
+  scale_y_continuous(breaks = c(-1, 1), labels = c("-", "+"), limits = c(-1.5, 1.5), expand = expansion(mult = 0.05))
   library(patchwork)
   p0<-p0+p1+plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")")
+ 
 }
 p0
 
-ggsave("common_pairs_v3_1106.png",
-       width=400, height=240, units = "mm", dpi = 300)
+ggsave("common_pairs_v3_1114.png",
+       width=320, height=192, units = "mm", dpi = 300)
 
 # ---- 12. co-occurrance with Precipitation change into % ----
 
 p0<-ggplot()
 for (i in 2:19)
 {
+  i=1
   vars_fig<-as.character(unlist(co_occurrence_df_PS_Fig[i, 1:2]))
   data<-data_clean[,c(vars_fig, "Precip_class","Annual_precip_change_dir")]
   data<-na.omit(data)
   x_var <- names(data)[1]
   y_var <- names(data)[2]
   plot_title <- paste(x_var, "vs.", y_var)
-  data <- data %>%
+  data$inter <- interaction(data[[x_var]], data[[y_var]], drop = FALSE)
+  library(dplyr)
+  x_var <- c(1, -1, 0)
+  y_var <- c(1, -1, 0)
+  # Create all combinations
+  interdata <- expand.grid(x_var = x_var, y_var = y_var)
+  interdata$inter<-interaction( interdata$x_var, interdata$y_var)
+  # Add feedback column
+  interdata <- interdata %>%
     mutate(feedback = case_when(
-      (.data[[x_var]] == 1 & .data[[y_var]] == 1) | (.data[[x_var]] == -1 & .data[[y_var]] == -1) | (.data[[x_var]] == 0 & .data[[y_var]] == 0) ~ "Positive",
-      (.data[[x_var]] == 1 & .data[[y_var]] == -1) | (.data[[x_var]] == -1 & .data[[y_var]] == 1) ~ "Negative",
-      TRUE ~ "Weak feedback"
+      (x_var == 1 & y_var == 1) | (x_var == -1 & y_var == -1) ~ "co-variation",
+      (x_var == 1 & y_var == -1) | (x_var == -1 & y_var == 1) ~ "negative co-variation",
+      (x_var == 0 & y_var == 0) ~ "none response",
+      (x_var == 1 & y_var == 0) | (x_var == -1 & y_var == 0) |
+        (x_var == 0 & y_var == 1) | (x_var == 0 & y_var == -1) ~ "weak co-variation"
     ))
-  p1<-ggplot(data, aes(
-    y = interaction(.data[[x_var]], .data[[y_var]]),
-    x = Annual_precip_change_dir,
+  interdata$feedback <- factor(interdata$feedback,
+                          levels = c("co-variation",
+                                     "negative co-variation",
+                                     "none response",
+                                     "weak co-variation"))
+  interdata <- interdata %>%
+    arrange(feedback, x_var, y_var)  
+  
+  interdata <- interdata %>%
+    arrange(feedback, x_var, y_var) %>%  
+    mutate(inter = factor(inter, levels = inter))  
+  data1<-left_join(interdata,data,by="inter")
+  p1<-ggplot(data1, aes(
+    x = inter,
+    y = Annual_precip_change_dir,
     color = feedback
-  )) +
+  ))+
     geom_point(size = 3) +
     theme_classic() +
     scale_color_manual(values = c(
-      "Positive"= "tomato",
-      "Negative" = "steelblue",
-      "Weak feedback" = "grey60"
+      "co-variation"= "salmon",
+      "negative co-variation" = "seagreen",
+      "none response" = "seashell3",
+      "weak co-variation"= "royalblue1"
     ))+ ggtitle(plot_title )+theme(
-      plot.title = element_text(hjust = 0.5),axis.title.y = element_blank(),          # remove y-axis label
+      plot.title = element_text(hjust = 0.5),
+      # remove y-axis label
       legend.position = "none"   # centers the title
-    )
+    )+xlab("")
+  
   library(patchwork)
   p0<-p0+p1+plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")")
   
 }
+ggsave("common_pairs_v3_1114_Pre_precetage.png",
+       width=400, height=220, units = "mm", dpi = 300)
 
-
-ggsave("common_pairs_v3_1106_Pre_precetage.png",
-       width=300, height=180, units = "mm", dpi = 300)
 
 
 
