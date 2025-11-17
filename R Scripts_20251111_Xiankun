@@ -522,7 +522,6 @@ ggsave("common_pairs_v3_1114.png",
 p0<-ggplot()
 for (i in 2:19)
 {
-  i=1
   vars_fig<-as.character(unlist(co_occurrence_df_PS_Fig[i, 1:2]))
   data<-data_clean[,c(vars_fig, "Precip_class","Annual_precip_change_dir")]
   data<-na.omit(data)
@@ -557,6 +556,7 @@ for (i in 2:19)
     arrange(feedback, x_var, y_var) %>%  
     mutate(inter = factor(inter, levels = inter))  
   data1<-left_join(interdata,data,by="inter")
+
   p1<-ggplot(data1, aes(
     x = inter,
     y = Annual_precip_change_dir,
